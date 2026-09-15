@@ -1,0 +1,7 @@
+node_modules
+gateways.json
+bench-results
+.env
+ui/.playwright-mcp
+.claude
+.playwright-mcp

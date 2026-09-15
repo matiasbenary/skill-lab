@@ -1,0 +1,12 @@
+[
+  {
+    "name": "wrap-swap-withdraw",
+    "tag": "flow",
+    "steps": [
+      { "prompt": "Register a new custody wallet for my agent on OutLayer. Give me the curl.", "expect": "api\\.outlayer\\.ai/register", "ref": "register-and-auth.md" },
+      { "prompt": "That wallet has no NEAR yet and every on-chain step needs gas. How do I get the user to send 5 NEAR into it?", "expect": "app\\.outlayer\\.ai/wallet/fund|wallet/fund\\?", "ref": "payment-keys.md" },
+      { "prompt": "Swap 0.5 NEAR to USDC.", "expect": "(?=[\\s\\S]*storage_deposit)(?=[\\s\\S]*near_deposit)(?=[\\s\\S]*intents/deposit)(?=[\\s\\S]*intents/swap)", "ref": "intents-swap.md" },
+      { "prompt": "Last step: withdraw that USDC. Can I send it straight to an external wallet address, or do I have to move it back first?", "expect": "intents/withdraw", "ref": "intents-withdraw.md" }
+    ]
+  }
+]

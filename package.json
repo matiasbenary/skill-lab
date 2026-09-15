@@ -1,0 +1,23 @@
+{
+  "name": "skill-lab",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test.ts",
+    "start": "node src/server.ts",
+    "bench": "node cli.ts bench",
+    "ui": "npm --prefix ui run dev"
+  },
+  "keywords": [],
+  "type": "module",
+  "bin": {
+    "skill-lab": "cli.ts"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1"
+  }
+}
