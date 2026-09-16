@@ -6,15 +6,15 @@ Binding the wallet to a user account or a leased agent account, spending from it
 
 ## Acting as a Named Account (Account Binding)
 
-> **⚠ UNVERIFIED — these endpoints return `404` on both networks.** Checked
-> 2026-09-14 against `api.outlayer.ai` and `testnet-api.outlayer.ai` with the
-> real HTTP method: `PUT /wallet/v1/binding`, `GET /wallet/v1/binding/setup` and `POST /wallet/v1/binding/balance` all answer `404`, while control routes on the same
-> hosts answer normally (`POST /register` → `200`, `GET /payment-keys/balance`
-> → `401`). They are also absent from `openapi.json`, from
-> `outlayer.fastnear.com/docs/agent-custody`, and from the `out-layer/api-spec`
-> source of truth. Most likely the feature is not deployed yet. **Confirm with
-> the OutLayer team before building on this page** — do not hand a user a curl
-> from here expecting it to work.
+> **⚠ TESTNET ONLY — these endpoints answer `404` on mainnet.** Checked
+> 2026-09-16. On `testnet-api.outlayer.ai` the whole surface is live and in
+> `openapi.json`: the routes answer `401`/`415`/`400` (they exist, you just
+> owe them auth or a body) while an invented path on the same host answers
+> `404`. On `api.outlayer.ai` all of them answer `404` and the word does not
+> appear in its `openapi.json`. The public docs
+> (`outlayer.fastnear.com/docs/agent-custody`, `out-layer/api-spec`) still
+> document neither. **Build against testnet; do not promise a user mainnet
+> binding until it answers.**
 
 By default the wallet acts as its own implicit account — a 64-character hex
 string. **Binding** lets it act as a named account instead: spending from it
@@ -199,5 +199,22 @@ absent, so you are the party that has to raise it.
   read is the only notification, there is no low-gas webhook.
 - The user can end it at any time by removing the executor from their extension
   set — one transaction, no permission from OutLayer. Your next call is refused.
-- `DELETE /wallet/v1/binding` ends OutLayer's side and cancels approvals still
-  waiting on that account.
+- Under **`hos_lease`** the binding is also pinned to who holds the leased
+  account. At activation OutLayer records the item's `owner_id`,
+  `rotation_epoch` and `rotation_seq`. A different owner, or a different `seq`
+  inside the same epoch, ends the binding on its own — nobody has to call you.
+  A **new** epoch under the same owner re-establishes it. So a lease that
+  changes hands stops working mid-flight, and the only way you find out is the
+  refusal or `GET /wallet/v1/binding`.
+- If you run a service rather than a single agent, you can be told instead of
+  polling. `POST /wallet/v1/binding/events` takes an
+  `X-Binding-Webhook-Secret` header and `{"asset_account_id": "...", "event":
+  "revoked"|"transferred"|"frozen"|...}`. The `event` string is logged for
+  correlation and **never acted on** — it is a hint to go re-read the binding,
+  not a command that changes it. `GET` on the same path lists which accounts
+  your secret is allowed to report about.
+- `DELETE /wallet/v1/binding` ends OutLayer's side and answers with
+  `cancelled_approvals`: pending multisig approvals against that account are
+  cancelled *and* their requests moved to `cancelled`, so nothing is left
+  stuck at `pending_approval` forever. Requests already `processing` are left
+  alone — they may have bytes on the wire.

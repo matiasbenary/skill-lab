@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react'
-import { inCell, ok, routedOk, type Cell, type ResultItem, type Turn } from '../types'
+import { expects, inCell, ok, routedOk, type Cell, type ResultItem, type Turn } from '../types'
 
 const ROLE = {
   system: 'bg-amber-500/10 text-amber-300',
@@ -71,15 +71,22 @@ function Verdict({ r, onVerdict }: { r: ResultItem; onVerdict: ((verdict: boolea
   )
 }
 
-/** What the regex actually matched, which is the only thing a green tick means. */
-function Expect({ expect, text, pass }: { expect: string; text: string; pass: boolean }) {
-  let hit = ''
-  try { hit = new RegExp(expect, 'i').exec(text)?.[0] ?? '' } catch { hit = '' }
+/** What each regex matched, so a failure names the part that is missing. */
+function Expect({ expect, text }: { expect: string | string[]; text: string }) {
+  const hit = (e: string) => { try { return new RegExp(e, 'i').exec(text)?.[0] ?? null } catch { return null } }
   return (
-    <p className="text-xs text-slate-500">
-      expected match: <code className={`rounded px-1 py-0.5 font-mono ${pass ? 'bg-emerald-500/10 text-emerald-300' : 'bg-rose-500/10 text-rose-300'}`}>{expect}</code>
-      {hit && <> → matched <span className="font-mono text-emerald-400">{hit}</span></>}
-    </p>
+    <ul className="space-y-0.5 text-xs text-slate-500">
+      {expects(expect).map((e, i) => {
+        const m = hit(e)
+        return (
+          <li key={i}>
+            <span className={m ? 'text-emerald-400' : 'text-rose-400'}>{m ? '✓' : '✗'}</span>{' '}
+            <code className={`rounded px-1 py-0.5 font-mono ${m ? 'bg-emerald-500/10 text-emerald-300' : 'bg-rose-500/10 text-rose-300'}`}>{e}</code>
+            {m && <> → matched <span className="font-mono text-emerald-400">{m}</span></>}
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
@@ -94,6 +101,15 @@ export function Results({ results, cells, onVerdict }: Props) {
     .map((r, index) => ({ r, index }))
     .filter(({ r }) => (!cell || inCell(r, cell)) && (!onlyFails || !ok(r)))
   const flows = results.some((r) => r.conversation)
+  // ponytail: one header row per flow, keyed by the run it belongs to; grouping is only
+  // visual, the rows keep their original index so verdicts still land in the right place.
+  const groups: [string, typeof shown][] = []
+  for (const row of shown) {
+    const key = flows ? `${row.r.skill}|${row.r.arm}|${row.r.i}|${row.r.conversation}` : ''
+    const last = groups.at(-1)
+    if (last?.[0] === key) last[1].push(row)
+    else groups.push([key, [row]])
+  }
   const manySkills = new Set(results.map((r) => r.skill)).size > 1
   const manyRuns = results.some((r) => r.i > 0)
   const cols = 8 + (manySkills ? 1 : 0) + (manyRuns ? 1 : 0)
@@ -131,8 +147,21 @@ export function Results({ results, cells, onVerdict }: Props) {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60">
-            {shown.map(({ r, index }) => {
-              const routed = r.arm === 'agentic' ? routedOk(r.ref, r.asked) : null
+            {groups.map(([gkey, rows]) => (
+              <Fragment key={gkey}>
+                {flows && rows.length > 0 && (
+                  <tr className="bg-slate-800/40">
+                    <td colSpan={cols} className="px-3 py-2 text-xs text-slate-300">
+                      <span className="font-semibold">{rows[0].r.conversation}</span>
+                      <span className="ml-2 text-slate-500">{manySkills && `${rows[0].r.skill} · `}{rows[0].r.arm}{manyRuns && ` · #${rows[0].r.i + 1}`}</span>
+                      <span className="ml-2 text-slate-500">
+                        {rows.filter(({ r }) => ok(r)).length}/{rows.length} ok · ${rows.reduce((a, { r }) => a + r.cost, 0).toFixed(5)}
+                      </span>
+                    </td>
+                  </tr>
+                )}
+                {rows.map(({ r, index }) => {
+              const routed = (r.arm === 'agentic' || r.arm === 'discovery') ? routedOk(r.ref, r.asked) : null
               const isOpen = open === index
               return (
                 <Fragment key={index}>
@@ -151,8 +180,12 @@ export function Results({ results, cells, onVerdict }: Props) {
                     <td className="px-3 py-2 text-right font-mono text-xs text-slate-400">{r.outTok.toLocaleString()}</td>
                     <td className="px-3 py-2 text-right font-mono text-xs text-slate-400">${r.cost.toFixed(5)}</td>
                     <td className="px-3 py-2 text-xs">
+                      {r.arm === 'discovery' && !r.loaded && <span className="mr-2 text-amber-400">never loaded</span>}
                       {r.asked ? (
-                        <span className={routed === false ? 'text-rose-400' : 'text-slate-400'}>{r.asked}</span>
+                        <span className={routed === false ? 'text-rose-400' : 'text-slate-400'}>
+                          {r.asked}
+                          {r.read && r.read.length > 1 && <span className="text-slate-600"> +{r.read.length - 1}</span>}
+                        </span>
                       ) : routed === true ? (
                         <span className="text-emerald-400">asked none (ok)</span>
                       ) : (
@@ -165,7 +198,7 @@ export function Results({ results, cells, onVerdict }: Props) {
                       <td colSpan={cols} className="px-6 py-4">
                         <p className="text-xs text-slate-500">prompt</p>
                         <p className="mb-3 text-sm text-slate-300">{r.prompt}</p>
-                        {r.expect && <Expect expect={r.expect} text={r.text} pass={r.pass} />}
+                        {r.expect?.length ? <Expect expect={r.expect} text={r.text} /> : null}
                         <p className="text-xs text-slate-500">
                           expected ref: <span className="font-mono text-slate-400">{r.ref}</span>
                           <span className="ml-2 text-slate-600">{REF_HELP[r.ref] ?? 'the reference the agentic arm should ask for'}</span>
@@ -182,8 +215,10 @@ export function Results({ results, cells, onVerdict }: Props) {
                     </tr>
                   )}
                 </Fragment>
-              )
-            })}
+                  )
+                })}
+              </Fragment>
+            ))}
             {shown.length === 0 && (
               <tr><td colSpan={cols} className="px-4 py-10 text-center text-xs text-slate-600">nothing yet</td></tr>
             )}

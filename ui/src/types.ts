@@ -1,7 +1,7 @@
-export type Arm = 'none' | 'full' | 'core' | 'routed' | 'agentic'
+export type Arm = 'none' | 'full' | 'core' | 'routed' | 'agentic' | 'discovery'
 
 /** Canonical order, so the cards don't reshuffle as results stream in. */
-export const ARMS: Arm[] = ['none', 'full', 'core', 'routed', 'agentic']
+export const ARMS: Arm[] = ['none', 'full', 'core', 'routed', 'agentic', 'discovery']
 
 export type ToolCall = { id: string; name: string; args: any }
 export type Turn =
@@ -14,7 +14,7 @@ export type ResultItem = {
   tag: string
   prompt: string
   ref: string
-  expect: string
+  expect: string | string[]
   arm: Arm
   i: number
   pass: boolean
@@ -22,6 +22,8 @@ export type ResultItem = {
   outTok: number
   cost: number
   asked: string | null
+  read?: string[]
+  loaded?: boolean
   text: string
   history: Turn[]
   system: string
@@ -52,7 +54,9 @@ export type Gateway = {
 }
 
 export type Skill = { name: string; dir: string; refs: string[]; chars: number }
-export type Case = { tag: string; prompt: string; expect: string; ref: string }
+export type Case = { tag: string; prompt: string; expect: string | string[]; ref: string }
+/** One regex, or several that all have to match. */
+export const expects = (e: string | string[]) => (Array.isArray(e) ? e : [e])
 export type Conversation = { name: string; tag: string; steps: Case[] }
 /** A battery of cases, independent of any skill: the same one runs against several. */
 export type Suite = { name: string; preamble: string; cases: Case[]; flows: Conversation[] }

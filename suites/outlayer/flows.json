@@ -5,8 +5,49 @@
     "steps": [
       { "prompt": "Register a new custody wallet for my agent on OutLayer. Give me the curl.", "expect": "api\\.outlayer\\.ai/register", "ref": "register-and-auth.md" },
       { "prompt": "That wallet has no NEAR yet and every on-chain step needs gas. How do I get the user to send 5 NEAR into it?", "expect": "app\\.outlayer\\.ai/wallet/fund|wallet/fund\\?", "ref": "payment-keys.md" },
-      { "prompt": "Swap 0.5 NEAR to USDC.", "expect": "(?=[\\s\\S]*storage_deposit)(?=[\\s\\S]*near_deposit)(?=[\\s\\S]*intents/deposit)(?=[\\s\\S]*intents/swap)", "ref": "intents-swap.md" },
+      { "prompt": "Swap 0.5 NEAR to USDC.", "expect": ["storage[_-]deposit","near_deposit","intents/deposit","intents/swap"], "ref": "intents-swap.md" },
       { "prompt": "Last step: withdraw that USDC. Can I send it straight to an external wallet address, or do I have to move it back first?", "expect": "intents/withdraw", "ref": "intents-withdraw.md" }
+    ]
+  },
+  {
+    "name": "shield-and-withdraw-private",
+    "tag": "flow",
+    "steps": [
+      { "prompt": "My OutLayer wallet holds 5 ZEC in its public intents balance. I want it in the private shard.", "expect": "confidential/(shield|deposit)", "ref": "confidential.md" },
+      { "prompt": "The response came back with status pending_deposit and no amounts. Is it done?", "expect": ["wallet/v1/requests/","(poll|success)"], "ref": "confidential.md" },
+      { "prompt": "Now withdraw 2 ZEC out of the private shard to my Bitcoin address bc1q....", "expect": ["(home chain|zcash)","(400|reject|mismatch|not allowed|can.t|cannot)"], "ref": "confidential.md" },
+      { "prompt": "Fine, withdraw to my Zcash t-address instead. Give me the explorer link for the resulting tx_hash so I can show the user.", "expect": "destinationChainTxHashes", "ref": "confidential.md" }
+    ]
+  },
+  {
+    "name": "agent-to-agent-check",
+    "tag": "flow",
+    "steps": [
+      { "prompt": "I want to pay another agent 2 USDC on OutLayer, but only if they actually deliver. It should expire in 24h.", "expect": ["payment-check/create","expires_in"], "ref": "payment-checks.md" },
+      { "prompt": "I closed my terminal and lost the check_key. Re-read it from the check_id for me.", "expect": "(only once|cannot be recovered|can.t be recovered|not recoverable|never stores|re-issued)", "ref": "payment-checks.md" },
+      { "prompt": "Status says partially_claimed with claimed_amount 500000. They only did half the job. Get me the other half back.", "expect": ["payment-check/reclaim","amount"], "ref": "payment-checks.md" },
+      { "prompt": "The claimed USDC is in their intents balance now. Is the check still usable for anything?", "expect": "remaining", "ref": "payment-checks.md" }
+    ]
+  },
+  {
+    "name": "polymarket-order",
+    "tag": "flow",
+    "steps": [
+      { "prompt": "Which address does my OutLayer wallet use on Polygon?", "expect": "address\\?chain=", "ref": "signing-evm-solana.md" },
+      { "prompt": "Sign this Polymarket CLOB order with it (EIP-712).", "expect": "evm/sign-typed-data", "ref": "signing-evm-solana.md" },
+      { "prompt": "Great, now send it on-chain from the wallet.", "expect": ["broadcast","(yourself|your own|off-chain)"], "ref": "signing-evm-solana.md" },
+      { "prompt": "The wallet has a policy attached and my sign call came back denied. What flag am I missing?", "expect": "evm_sign", "ref": "signing-evm-solana.md" }
+    ]
+  },
+  {
+    "name": "connector-trial-run",
+    "tag": "flow",
+    "steps": [
+      { "prompt": "I want to send an email from my agent through OutLayer without paying yet.", "expect": ["trial-key","(404|not deployed|unverified|confirm with)"], "ref": "connectors.md" },
+      { "prompt": "Got the key. What URL do I POST the email to?", "expect": "call/connectors\\.outlayer\\.near/", "ref": "connectors.md" },
+      { "prompt": "I sent {\"input\":{\"op\":\"send\",\"to\":\"a@b.com\"}} and it was refused before running. Why?", "expect": "operation", "ref": "connectors.md" },
+      { "prompt": "Let me just authenticate with my wk_ key in the X-Payment-Key header instead.", "expect": "wk_is_not_a_payer|not a payer|does not pay", "ref": "connectors.md" },
+      { "prompt": "The connector needs my SendGrid token to actually send. Where does it go?", "expect": "app\\.outlayer\\.ai/secrets", "ref": "connectors.md" }
     ]
   }
 ]

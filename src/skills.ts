@@ -5,22 +5,26 @@
 //   core     new SKILL.md, no refs         is the core enough?
 //   routed   core + the right reference    ceiling: perfect routing
 //   agentic  core + tool to request a ref  real: the model routes by itself
+//   discovery only the frontmatter + tools  real+: it must load the skill first
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, resolve, basename } from "node:path";
 import type { Tool } from "./gateway.ts";
 
-export const ARMS = ["none", "full", "core", "routed", "agentic"] as const;
+export const ARMS = ["none", "full", "core", "routed", "agentic", "discovery"] as const;
 export type Arm = (typeof ARMS)[number];
 
-export type Skill = { name: string; dir: string; text: string; refs: string[] };
+/** `text` is the whole SKILL.md; `front` is just its YAML frontmatter. */
+export type Skill = { name: string; dir: string; text: string; front: string; refs: string[] };
 
 export function loadSkill(dir: string): Skill {
   const path = resolve(dir);
   const refsDir = join(path, "references");
+  const text = readFileSync(join(path, "SKILL.md"), "utf8");
   return {
     name: basename(path),
     dir: path,
-    text: readFileSync(join(path, "SKILL.md"), "utf8"),
+    text,
+    front: /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)?.[1] ?? "",
     refs: existsSync(refsDir) ? readdirSync(refsDir).filter((f) => f.endsWith(".md")) : [],
   };
 }
@@ -39,17 +43,35 @@ export const PREAMBLE =
   "You are an agent working with the skill below. Answer the user precisely and " +
   "concisely. If you do not know, say so rather than inventing an answer.";
 
-/** The tool the agentic arm offers the model to request a reference. */
-export const readReferenceTool = (refs: string[]): Tool => ({
+/**
+ * The tool the agentic arm offers the model to request a reference.
+ * Deliberately shaped like the harness's real `Read`: a free-form path, no list
+ * of what exists and no cap on how many it opens. Knowing which files are there
+ * is the SKILL.md's job, which is exactly what the routing arms measure. A wrong
+ * guess costs a round and comes back as ENOENT, as it would in Claude Code.
+ */
+export const readReferenceTool = (): Tool => ({
   name: "read_reference",
-  description:
-    "Read one reference file from the skill. Call it when the task needs detail " +
-    "the core SKILL.md does not carry. Read exactly one, the one for the task.",
-  params: { type: "object", properties: { file: { type: "string", enum: refs } }, required: ["file"] },
+  description: "Read a file from disk.",
+  params: { type: "object", properties: { file: { type: "string", description: "Path of the file to read, e.g. references/foo.md" } }, required: ["file"] },
+});
+
+/**
+ * The tool the discovery arm offers: the model starts with nothing but the
+ * frontmatter and has to decide the skill is worth loading, the way a harness
+ * makes it choose from a list of descriptions before any body is in context.
+ */
+export const loadSkillTool = (skill: Skill): Tool => ({
+  name: "load_skill",
+  description: `Load the full instructions of a skill listed in <available-skills>.`,
+  params: { type: "object", properties: { name: { type: "string", description: "The skill's name, e.g. " + skill.name } }, required: ["name"] },
 });
 
 export function systemPrompt(arm: Arm, skill: Skill, ref: string, preamble = PREAMBLE): string {
   if (arm === "none") return preamble;
+  // discovery = progressive disclosure from the top: only the frontmatter is in
+  // context, the body arrives (or not) through load_skill.
+  if (arm === "discovery") return `${preamble}\n\n<available-skills>\n${skill.front}\n</available-skills>`;
   // full = the monolith: SKILL.md with every reference inlined. For a skill with
   // no references/ (an old, already monolithic one) it's just its SKILL.md.
   if (arm === "full") return wrap(preamble, skill.text + skill.refs.map((r) => referenceBlock(skill, r)).join(""));

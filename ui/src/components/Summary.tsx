@@ -8,7 +8,7 @@ export function Summary({ results, cells }: { results: ResultItem[]; cells: Cell
   const rows = cells.map((cell) => {
     const rs = results.filter((r) => inCell(r, cell))
     // only the agentic arm routes: the rest have no tool, there is nothing to get right
-    const routing = cell.arm === 'agentic' ? rs.map((r) => routedOk(r.ref, r.asked)).filter((v) => v !== null) : []
+    const routing = (cell.arm === 'agentic' || cell.arm === 'discovery') ? rs.map((r) => routedOk(r.ref, r.asked)).filter((v) => v !== null) : []
     return {
       cell,
       pass: rs.filter(ok).length,
@@ -16,6 +16,8 @@ export function Summary({ results, cells }: { results: ResultItem[]; cells: Cell
       inTok: avg(rs.map((r) => r.inTok)),
       outTok: avg(rs.map((r) => r.outTok)),
       routing: routing.length ? `${routing.filter(Boolean).length}/${routing.length}` : '—',
+      // discovery is the only arm that can fail to load the skill at all
+      loaded: cell.arm === 'discovery' ? `${rs.filter((r) => r.loaded).length}/${rs.length}` : null,
       cost: rs.reduce((a, r) => a + r.cost, 0),
     }
   })
@@ -43,6 +45,7 @@ export function Summary({ results, cells }: { results: ResultItem[]; cells: Cell
               <div><dt>tok in</dt><dd className="font-mono text-slate-300">{r.inTok}</dd></div>
               <div><dt>tok out</dt><dd className="font-mono text-slate-300">{r.outTok}</dd></div>
               <div><dt>routing</dt><dd className="font-mono text-slate-300">{r.routing}</dd></div>
+              {r.loaded && <div><dt>loaded</dt><dd className="font-mono text-slate-300">{r.loaded}</dd></div>}
             </dl>
           </div>
         )

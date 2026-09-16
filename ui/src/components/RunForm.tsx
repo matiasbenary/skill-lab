@@ -136,6 +136,7 @@ const ARM_HELP: Record<string, string> = {
   core: 'core — only the core SKILL.md, no references: is the core enough?',
   routed: 'routed — core + the one right reference handed to it: ceiling of perfect routing',
   agentic: 'agentic — core + a tool to request references: the model routes by itself',
+  discovery: 'discovery — only the frontmatter: the model has to load the skill before it can use it',
 }
 
 const caption = 'text-[11px] uppercase tracking-wider text-slate-500'

@@ -1,6 +1,6 @@
 ---
 name: agent-custody
-description: Multi-chain custody wallet for AI agents with cross-chain swaps and payment checks via NEAR Intents. Register a gasless wallet, swap tokens across 20+ chains, send/receive on NEAR, Ethereum, Bitcoin, Solana, and more. Use when an agent needs crypto operations - transfers, swaps, payment checks, contract calls, or cross-chain movements.
+description: Multi-chain custody wallet for AI agents with cross-chain swaps and payment checks via NEAR Intents. Register a gasless wallet, swap tokens across 20+ chains, send/receive on NEAR, Ethereum, Bitcoin, Solana, and more. Use when an agent needs crypto operations - transfers, swaps, payment checks, contract calls, or cross-chain movements - or to call a paid connector (an external service such as email or a third-party API) through the wallet.
 metadata:
   api:
     base_url: https://api.outlayer.ai
@@ -38,7 +38,7 @@ register, balance, `transfer` — answer from it and open nothing.
 | Pay another agent with a check it has to cash, or get paid by one | `references/payment-checks.md` |
 | Sign an EIP-712 order, a `personal_sign`, or a Solana transaction | `references/signing-evm-solana.md` |
 | Act as `alice.near` rather than a hex address; spend from a user's account | `references/account-binding.md` |
-| Call a connector: claim its free trial, buy the flat-rate subscription, give it an upstream credential | `references/connectors.md` |
+| Run an external service through OutLayer - send an email, hit a third-party API, call any curated connector: claim its free trial, buy the flat-rate subscription, give it an upstream credential | `references/connectors.md` |
 | The wallet has no NEAR and the next step is on-chain — ask the user to fund it | `references/payment-keys.md` |
 | Out of allowance and need to keep executing — mint or fund a payment key; ask the user for money or for a spend policy | `references/payment-keys.md` |
 | Drive the `outlayer` CLI with a `wk_` instead of a NEAR key | `references/cli.md` |

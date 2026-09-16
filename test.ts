@@ -29,26 +29,28 @@ assert.equal(routedOk("!", null), true);
 assert.equal(routedOk("!", "cli.md"), false);
 assert.equal(routedOk("-", "cli.md"), null);
 
-// --- fake gateway: first it asks for the reference, then answers with the match.
+// --- fake gateway: it calls every tool it is offered, in order, then answers with the match.
 const fake = createServer((req, res) => {
   let b = ""; req.on("data", (d) => (b += d)); req.on("end", () => {
     const anthropic = req.url!.includes("messages");
     const body = JSON.parse(b);
-    const asked = JSON.stringify(body).includes("tool_call_id") || JSON.stringify(body).includes("tool_result");
-    const wantsTool = Boolean(body.tools?.length) && !asked;
+    const done = (b.match(/tool_call_id|tool_result/g) ?? []).length; // tools already used
+    const tool = (body.tools ?? [])[done];
+    const name: string | undefined = anthropic ? tool?.name : tool?.function?.name;
+    const args = name === "load_skill" ? { name: "agent-custody" } : { file: "references/intents-swap.md" };
     const answer = `intents/swap/quote api.outlayer.ai/register msgs:${(body.messages?.length ?? 0) - 1}`;
 
     if (anthropic)
       return res.end(JSON.stringify({
-        content: wantsTool
-          ? [{ type: "tool_use", id: "t1", name: "read_reference", input: { file: "intents-swap.md" } }]
+        content: name
+          ? [{ type: "tool_use", id: `t${done}`, name, input: args }]
           : [{ type: "text", text: answer }],
         usage: { input_tokens: 10, output_tokens: 5 },
       }));
 
     res.end(JSON.stringify({
-      choices: [{ message: wantsTool
-        ? { role: "assistant", content: "", tool_calls: [{ id: "t1", type: "function", function: { name: "read_reference", arguments: '{"file":"intents-swap.md"}' } }] }
+      choices: [{ message: name
+        ? { role: "assistant", content: "", tool_calls: [{ id: `t${done}`, type: "function", function: { name, arguments: JSON.stringify(args) } }] }
         : { role: "assistant", content: answer } }],
       usage: { prompt_tokens: 10, completion_tokens: 5 },
     }));
@@ -71,23 +73,34 @@ for (const kind of ["openai", "anthropic"] as const) {
   assert.equal(data.results.length, 2 * 3 * 2, `${kind}: 2 casos x 3 arms x 2 runs`);
 
   for (const r of data.results) {
-    assert.deepEqual(Object.keys(r).sort(), ["arm", "asked", "cost", "expect", "history", "i", "inTok", "outTok", "pass", "prompt", "ref", "skill", "system", "tag", "text"].sort(), `${kind}: ResultItem shape`);
+    assert.deepEqual(Object.keys(r).sort(), ["arm", "asked", "read", "loaded", "cost", "expect", "history", "i", "inTok", "outTok", "pass", "prompt", "ref", "skill", "system", "tag", "text"].sort(), `${kind}: ResultItem shape`);
     assert.ok(r.pass, `${kind}/${r.arm}: ${r.text}`);
   }
   assert.deepEqual([...new Set(data.results.map((r) => r.i))].sort(), [0, 1]);
 
   const agentic = data.results.filter((r) => r.arm === "agentic");
-  assert.ok(agentic.every((r) => r.asked === "intents-swap.md"), `${kind}: asked for the reference`);
+  assert.ok(agentic.every((r) => r.asked === "intents-swap.md"), `${kind}: the references/ prefix is stripped`);
+  assert.ok(agentic.every((r) => r.read.includes("intents-swap.md")), `${kind}: the ref was actually served`);
   assert.ok(agentic.every((r) => r.inTok === 20 && r.outTok === 10), `${kind}: sums the tokens of both round-trips`);
   assert.ok(agentic.every((r) => r.cost === 20 * 2 + 10 * 3));
   assert.ok(data.results.filter((r) => r.arm === "core").every((r) => r.asked === null), "with no tool it asks for nothing");
+  assert.ok(agentic.every((r) => !r.loaded), `${kind}: the agentic arm already has the body, it never loads it`);
 }
 
+// --- discovery: only the frontmatter is in context, the body arrives through load_skill
+const disc = await benchmark({ gw: gwOf("anthropic"), skills: ["agent-custody"], tags: ["swap"], arms: ["discovery"] });
+assert.ok(disc.results.every((r) => r.system.includes("<available-skills>")), "discovery only ships the frontmatter");
+assert.ok(disc.results.every((r) => !r.system.includes("<skill>")), "the body is NOT in the system prompt");
+assert.ok(disc.results.every((r) => r.loaded), "it called load_skill");
+assert.ok(disc.results.every((r) => r.read.includes("intents-swap.md")), "and then read a reference");
+assert.ok(disc.results.every((r) => r.inTok === 30 && r.outTok === 15), "three round-trips: load, read, answer");
+
 // --- conversations: turns carry over from one step to the next
-const flow = await benchmark({ gw: gwOf("openai"), mode: "flows", arms: ["core"] });
+const all = await benchmark({ gw: gwOf("openai"), mode: "flows", arms: ["core"] });
 const steps = suite.flows[0].steps.length;
-assert.equal(flow.results.length, steps, "one answer per step");
-assert.ok(flow.results.every((r) => r.conversation === "wrap-swap-withdraw"));
+assert.equal(all.results.length, suite.flows.reduce((n, f) => n + f.steps.length, 0), "one answer per step");
+const flow = { results: all.results.filter((r) => r.conversation === "wrap-swap-withdraw") };
+assert.equal(flow.results.length, steps);
 assert.deepEqual(flow.results.map((r) => r.step), [...Array(steps).keys()].map((n) => n + 1));
 // the fake returns how many messages it received: it must grow by 2 per step (user + assistant)
 const msgs = flow.results.map((r) => Number(r.text.match(/msgs:(\d+)/)![1]));

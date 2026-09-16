@@ -132,7 +132,8 @@ function report({ results, arms, skills, suite, model }: BenchmarkData, nCases: 
       pass: `${rows.filter((r) => r.pass).length}/${rows.length}`,
       "tok in": avg(rows.map((r) => r.inTok)),
       "tok out": avg(rows.map((r) => r.outTok)),
-      routing: arm === "agentic" && routing.length ? `${routing.filter(Boolean).length}/${routing.length}` : "-",
+      loaded: arm === "discovery" ? `${rows.filter((r) => r.loaded).length}/${rows.length}` : "-",
+      routing: (arm === "agentic" || arm === "discovery") && routing.length ? `${routing.filter(Boolean).length}/${routing.length}` : "-",
       cost: "$" + rows.reduce((a, r) => a + r.cost, 0).toFixed(4),
     };
   }

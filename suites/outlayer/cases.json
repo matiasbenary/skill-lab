@@ -19,11 +19,11 @@
   {"tag":"checks","prompt":"I issued a check on OutLayer and the other agent never cashed it. How do I get the money back?","expect":"payment-check/reclaim","ref":"payment-checks.md"},
   {"tag":"signing","prompt":"Sign a Polymarket-style EIP-712 order with the OutLayer wallet.","expect":"evm/sign-typed-data","ref":"signing-evm-solana.md"},
   {"tag":"signing","prompt":"I need to sign a Sign-in-with-Solana message with the OutLayer wallet.","expect":"solana/sign-message","ref":"signing-evm-solana.md"},
-  {"tag":"binding","prompt":"I want the agent to act as alice.near instead of a hex address, on OutLayer.","expect":"(?=[\\s\\S]*wallet/v1/binding)(?=[\\s\\S]*(404|not deployed|unverified|confirm with))","ref":"account-binding.md"},
-  {"tag":"binding","prompt":"The agent is bound to the user's account. How do I read THAT account's balance on OutLayer?","expect":"(?=[\\s\\S]*binding/balance)(?=[\\s\\S]*(404|not deployed|unverified|confirm with))","ref":"account-binding.md"},
-  {"tag":"connectors","prompt":"I want to try OutLayer's email connector for free.","expect":"(?=[\\s\\S]*trial-key)(?=[\\s\\S]*(404|not deployed|unverified|confirm with))","ref":"connectors.md"},
+  {"tag":"binding","prompt":"I want the agent to act as alice.near instead of a hex address, on OutLayer.","expect":["wallet/v1/binding", "(404|not deployed|unverified|confirm with)"],"ref":"account-binding.md"},
+  {"tag":"binding","prompt":"The agent is bound to the user's account. How do I read THAT account's balance on OutLayer?","expect":["binding/balance", "(404|not deployed|unverified|confirm with)"],"ref":"account-binding.md"},
+  {"tag":"connectors","prompt":"I want to try OutLayer's email connector for free.","expect":["trial-key", "(404|not deployed|unverified|confirm with)"],"ref":"connectors.md"},
   {"tag":"connectors","prompt":"The OutLayer connector needs my SendGrid API token. Where do I put it?","expect":"app\\.outlayer\\.ai/secrets","ref":"connectors.md"},
-  {"tag":"connectors","prompt":"I want a flat rate for OutLayer connector calls instead of paying per call.","expect":"(?=[\\s\\S]*subscription/status)(?=[\\s\\S]*(404|not deployed|unverified|confirm with))","ref":"connectors.md"},
+  {"tag":"connectors","prompt":"I want a flat rate for OutLayer connector calls instead of paying per call.","expect":["subscription/status", "(404|not deployed|unverified|confirm with)"],"ref":"connectors.md"},
   {"tag":"paykeys","prompt":"My OutLayer trial ran out and I need to keep executing. What do I do?","expect":"create-payment-key","ref":"payment-keys.md"},
   {"tag":"paykeys","prompt":"I need the user to send me 10 USDC into the intents balance on OutLayer.","expect":"wallet/fund\\?|dest=intents","ref":"payment-keys.md"},
   {"tag":"register","prompt":"Create a deterministic sub-wallet for task 42 from the OutLayer parent wallet.","expect":"wallet/v1/api-key","ref":"register-and-auth.md"},
@@ -40,6 +40,6 @@
   {"tag":"trap","prompt":"Do a swap on OutLayer testnet.","expect":"503|mainnet|no solvers","ref":"-"},
   {"tag":"control","prompt":"Write me a quicksort in Python.","expect":"def","ref":"!"},
   {"tag":"trap","prompt":"Swap 0.5 NEAR to USDC on OutLayer. The wallet holds 1 NEAR and nothing else.","expect":"near_deposit","ref":"intents-swap.md"},
-  {"tag":"trap","prompt":"My OutLayer swap failed with 'Insufficient intents balance: Have: 0'. How much NEAR should the user send?","expect":"(?=[\\s\\S]*intents/deposit)(?=[\\s\\S]*(no|not|n.t need|instead of|rather than))","ref":"intents-swap.md"},
-  {"tag":"trap","prompt":"Give me an OutLayer swap quote for 10 wNEAR to USDC with 0.5% slippage.","expect":"(?=[\\s\\S]*min_amount_out)(?=[\\s\\S]*(no |not |doesn.t|does not|isn.t|is not).{0,30}slippage)","ref":"intents-swap.md"}
+  {"tag":"trap","prompt":"My OutLayer swap failed with 'Insufficient intents balance: Have: 0'. How much NEAR should the user send?","expect":["intents/deposit", "(no|not|n.t need|instead of|rather than)"],"ref":"intents-swap.md"},
+  {"tag":"trap","prompt":"Give me an OutLayer swap quote for 10 wNEAR to USDC with 0.5% slippage.","expect":["min_amount_out", "(no |not |doesn.t|does not|isn.t|is not).{0,30}slippage"],"ref":"intents-swap.md"}
 ]
