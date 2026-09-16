@@ -3,7 +3,7 @@
 import { parseArgs } from "node:util";
 import { PRESETS } from "./src/gateway.ts";
 import { ARMS, listSkills, loadSkill, routedOk } from "./src/skills.ts";
-import { DEFAULT_ARMS, benchmark, loadCases, loadConversations, saveBenchmark, type Arm, type BenchmarkData, type ResultItem } from "./src/runner.ts";
+import { DEFAULT_ARMS, benchmark, listSuites, loadSuite, saveBenchmark, type Arm, type BenchmarkData, type ResultItem } from "./src/runner.ts";
 import * as store from "./src/store.ts";
 
 const HELP = `skill-lab
@@ -11,9 +11,10 @@ const HELP = `skill-lab
   add <${Object.keys(PRESETS).join("|")}> --key K [--label L] [--model M] [--url U] [--in 0.0000001 --out 0.0000005]
   rm  <id|label>
   skills                          skills available to test
-  cases [--tag core]
-  flows                           multi-turn conversations (each step feeds the next)
-  bench <id|label> [--skill agent-custody] [--suite cases|flows] [--tag trap,swap]
+  suites                          case batteries available
+  cases [--suite S] [--tag core]
+  flows [--suite S]               multi-turn conversations (each step feeds the next)
+  bench <id|label> [--skill a,b] [--suite S] [--mode cases|flows] [--tag trap,swap]
                    [--arm ${ARMS.join(",")}] [--runs 3] [--conc 4] [--json]`;
 
 const { values: o, positionals } = parseArgs({
@@ -22,7 +23,7 @@ const { values: o, positionals } = parseArgs({
     key: { type: "string" }, label: { type: "string" }, model: { type: "string" }, url: { type: "string" },
     in: { type: "string" }, out: { type: "string" },
     tag: { type: "string" }, arm: { type: "string" }, runs: { type: "string" }, conc: { type: "string" },
-    skill: { type: "string" }, suite: { type: "string" }, json: { type: "boolean" },
+    skill: { type: "string" }, suite: { type: "string" }, mode: { type: "string" }, json: { type: "boolean" },
   },
 });
 const [cmd, arg] = positionals;
@@ -57,12 +58,19 @@ switch (cmd) {
     console.table(listSkills());
     break;
 
+  case "suites":
+    console.table(listSuites().map((name) => {
+      const s = loadSuite(name);
+      return { name, cases: s.cases.length, flows: s.flows.length, preamble: s.preamble.slice(0, 60) };
+    }));
+    break;
+
   case "flows":
-    console.table(loadConversations().map((c) => ({ name: c.name, tag: c.tag, steps: c.steps.length })));
+    console.table(loadSuite(o.suite).flows.map((c) => ({ name: c.name, tag: c.tag, steps: c.steps.length })));
     break;
 
   case "cases":
-    console.table(loadCases().filter((c) => !o.tag || csv(o.tag)!.includes(c.tag)));
+    console.table(loadSuite(o.suite).cases.filter((c) => !o.tag || csv(o.tag)!.includes(c.tag)));
     break;
 
   case "bench": {
@@ -72,19 +80,24 @@ switch (cmd) {
     if (bad.length) die(`invalid arms: ${bad}. use ${ARMS.join(",")}`);
 
     const tags = csv(o.tag);
-    const flows = o.suite === "flows";
-    const units = flows ? loadConversations() : loadCases();
+    const flows = o.mode === "flows";
+    const suite = loadSuite(o.suite);
+    const units: any[] = flows ? suite.flows : suite.cases;
     const picked = units.filter((u) => !tags || tags.includes(u.tag));
     // in flows each conversation is N answers, one per step
     const answers = flows ? picked.reduce((a, c: any) => a + c.steps.length, 0) : picked.length;
     const runs = Number(o.runs ?? 1);
+    const skills = csv(o.skill) ?? [listSkills()[0].name];
     // with no references/ the runner drops routed and agentic; the counter drops them too
-    const refs = loadSkill(o.skill ?? "agent-custody").refs.length;
-    const total = answers * arms.filter((a) => refs || (a !== "routed" && a !== "agentic")).length * runs;
+    const cells = skills.reduce((n, name) => {
+      const refs = listSkills().find((s) => s.name === name)?.refs.length ?? loadSkill(name).refs.length;
+      return n + arms.filter((a) => refs || (a !== "routed" && a !== "agentic")).length;
+    }, 0);
+    const total = answers * cells * runs;
     let done = 0;
 
     const data = await benchmark(
-      { gw, skill: o.skill, suite: flows ? "flows" : "cases", arms, tags, runs, concurrency: Number(o.conc ?? 4) },
+      { gw, skills, suite: suite.name, mode: flows ? "flows" : "cases", arms, tags, runs, concurrency: Number(o.conc ?? 4) },
       () => process.stderr.write(`\r${++done}/${total} `),
     );
     process.stderr.write("\r");
@@ -103,17 +116,19 @@ switch (cmd) {
     console.log(HELP);
 }
 
-function report({ results, arms, skill, model }: BenchmarkData, nCases: number, runs: number, label: string) {
+function report({ results, arms, skills, suite, model }: BenchmarkData, nCases: number, runs: number, label: string) {
   const unit = results.some((r) => r.conversation) ? "conversations" : "cases";
   const avg = (nums: number[]) => Math.round(nums.reduce((a, n) => a + n, 0) / (nums.length || 1));
-  console.log(`\nskill ${skill}   ${label} · ${model}   ${nCases} ${unit} x ${runs} run(s)   arms: ${arms.join(",")}\n`);
+  console.log(`\nskills ${skills.join(" vs ")}   suite ${suite}   ${label} · ${model}   ${nCases} ${unit} x ${runs} run(s)   arms: ${arms.join(",")}\n`);
 
-  // One row per arm: how much it got right, how much it spent, whether it routed well.
+  // One row per skill x arm: how much it got right, how much it spent, whether it routed well.
+  const cells = skills.flatMap((s) => arms.map((a) => [s, a] as const));
   const byArm: Record<string, object> = {};
-  for (const arm of arms) {
-    const rows = results.filter((r) => r.arm === arm);
+  for (const [sk, arm] of cells) {
+    const rows = results.filter((r) => r.arm === arm && r.skill === sk);
+    if (!rows.length) continue;
     const routing = rows.map((r) => routedOk(r.ref, r.asked)).filter((v) => v !== null);
-    byArm[arm] = {
+    byArm[skills.length > 1 ? `${sk} · ${arm}` : arm] = {
       pass: `${rows.filter((r) => r.pass).length}/${rows.length}`,
       "tok in": avg(rows.map((r) => r.inTok)),
       "tok out": avg(rows.map((r) => r.outTok)),
@@ -129,9 +144,9 @@ function report({ results, arms, skill, model }: BenchmarkData, nCases: number, 
   const byRow: Record<string, Record<string, string>> = {};
   for (const k of new Set(results.map(key))) {
     byRow[k] = {};
-    for (const arm of arms) {
-      const rows = results.filter((r) => r.arm === arm && key(r) === k);
-      byRow[k][arm] = `${rows.filter((r) => r.pass).length}/${rows.length}`;
+    for (const [sk, arm] of cells) {
+      const rows = results.filter((r) => r.arm === arm && r.skill === sk && key(r) === k);
+      if (rows.length) byRow[k][skills.length > 1 ? `${sk} · ${arm}` : arm] = `${rows.filter((r) => r.pass).length}/${rows.length}`;
     }
   }
   console.table(byRow);
@@ -140,6 +155,6 @@ function report({ results, arms, skill, model }: BenchmarkData, nCases: number, 
   if (failures.length) {
     console.log("failures:");
     for (const f of failures)
-      console.log(`  [${f.arm}]${f.step ? ` step ${f.step}` : ""} ${f.prompt.slice(0, 62)}${f.error ? `\n      ERROR ${f.error}` : f.asked ? `  (asked ${f.asked})` : ""}`);
+      console.log(`  [${skills.length > 1 ? `${f.skill} ${f.arm}` : f.arm}]${f.step ? ` step ${f.step}` : ""} ${f.prompt.slice(0, 62)}${f.error ? `\n      ERROR ${f.error}` : f.asked ? `  (asked ${f.asked})` : ""}`);
   }
 }

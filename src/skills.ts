@@ -28,16 +28,16 @@ export function loadSkill(dir: string): Skill {
 export const readRef = (skill: Skill, name: string) => readFileSync(join(skill.dir, "references", name), "utf8");
 
 /** The skills available to pick: directories with a SKILL.md inside. */
-export const listSkills = (root = ".") =>
+export const listSkills = (root = process.env.SKILLS_DIR ?? ".") =>
   readdirSync(root, { withFileTypes: true })
     .filter((d) => d.isDirectory() && !d.name.startsWith(".") && existsSync(join(root, d.name, "SKILL.md")))
     .map((d) => loadSkill(join(root, d.name)))
     .map(({ name, dir, refs, text }) => ({ name, dir, refs, chars: text.length }));
 
+/** Fallback when the suite carries no preamble.txt of its own. */
 export const PREAMBLE =
-  "You are an agent operating an OutLayer custody wallet. Answer the user with the " +
-  "exact endpoint, curl and fields. Be concise. If you do not know, say so " +
-  "rather than inventing an endpoint.";
+  "You are an agent working with the skill below. Answer the user precisely and " +
+  "concisely. If you do not know, say so rather than inventing an answer.";
 
 /** The tool the agentic arm offers the model to request a reference. */
 export const readReferenceTool = (refs: string[]): Tool => ({

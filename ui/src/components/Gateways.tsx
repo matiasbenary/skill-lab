@@ -79,7 +79,8 @@ export function Gateways({ gateways, presets, selected, onSelect, onChange }: Pr
               <button onClick={() => edit(g)} className="text-xs text-slate-600 hover:text-slate-300">
                 {draft?.id === g.id ? 'close' : 'edit'}
               </button>
-              <button onClick={async () => { await removeGateway(g.id); onChange() }} className="text-xs text-slate-600 hover:text-rose-400">
+              <button onClick={async () => { if (confirm(`delete gateway "${g.label}"?`)) { await removeGateway(g.id); onChange() } }}
+                className="text-xs text-slate-600 hover:text-rose-400">
                 delete
               </button>
             </div>

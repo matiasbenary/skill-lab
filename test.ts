@@ -4,13 +4,16 @@ import assert from "node:assert";
 import { createServer } from "node:http";
 import { rmSync, readFileSync } from "node:fs";
 import { api } from "./src/api.ts";
-import { benchmark, loadCases, loadConversations, saveBenchmark } from "./src/runner.ts";
+import { benchmark, listSuites, loadSuite, saveBenchmark } from "./src/runner.ts";
 import { loadSkill, systemPrompt, routedOk } from "./src/skills.ts";
 import * as store from "./src/store.ts";
 
-// --- casos y skills
-const cases = loadCases();
-assert.equal(cases.length, 40, `casos parseados: ${cases.length}`);
+// --- suites, casos y skills
+assert.ok(listSuites().includes("outlayer"), `suites: ${listSuites()}`);
+const suite = loadSuite();
+assert.ok(suite.cases.length > 0 && suite.flows.length > 0);
+assert.ok(suite.preamble.includes("OutLayer"), "the suite brings its own preamble");
+const cases = suite.cases;
 const skill = loadSkill("agent-custody");
 const mono = loadSkill("outlayer"); // old skill, no references/
 assert.ok(skill.refs.includes("intents-swap.md"));
@@ -59,15 +62,16 @@ const gwOf = (kind: "openai" | "anthropic") => ({
 
 // --- benchmark: the shape of BenchmarkData and agentic routing, in both dialects
 for (const kind of ["openai", "anthropic"] as const) {
-  const data = await benchmark({ gw: gwOf(kind), skill: "agent-custody", tags: ["swap"], arms: ["core", "routed", "agentic"], runs: 2 });
-  assert.equal(data.skill, "agent-custody");
+  const data = await benchmark({ gw: gwOf(kind), skills: ["agent-custody"], tags: ["swap"], arms: ["core", "routed", "agentic"], runs: 2 });
+  assert.deepEqual(data.skills, ["agent-custody"]);
+  assert.equal(data.suite, "outlayer");
   assert.deepEqual(data.arms, ["core", "routed", "agentic"]);
   assert.equal(data.runs, 2);
   assert.deepEqual(data.pricing, { in: 2, out: 3 });
   assert.equal(data.results.length, 2 * 3 * 2, `${kind}: 2 casos x 3 arms x 2 runs`);
 
   for (const r of data.results) {
-    assert.deepEqual(Object.keys(r).sort(), ["arm", "asked", "cost", "i", "inTok", "outTok", "pass", "prompt", "ref", "tag", "text"].sort(), `${kind}: ResultItem shape`);
+    assert.deepEqual(Object.keys(r).sort(), ["arm", "asked", "cost", "expect", "history", "i", "inTok", "outTok", "pass", "prompt", "ref", "skill", "system", "tag", "text"].sort(), `${kind}: ResultItem shape`);
     assert.ok(r.pass, `${kind}/${r.arm}: ${r.text}`);
   }
   assert.deepEqual([...new Set(data.results.map((r) => r.i))].sort(), [0, 1]);
@@ -80,8 +84,8 @@ for (const kind of ["openai", "anthropic"] as const) {
 }
 
 // --- conversations: turns carry over from one step to the next
-const flow = await benchmark({ gw: gwOf("openai"), suite: "flows", arms: ["core"] });
-const steps = loadConversations()[0].steps.length;
+const flow = await benchmark({ gw: gwOf("openai"), mode: "flows", arms: ["core"] });
+const steps = suite.flows[0].steps.length;
 assert.equal(flow.results.length, steps, "one answer per step");
 assert.ok(flow.results.every((r) => r.conversation === "wrap-swap-withdraw"));
 assert.deepEqual(flow.results.map((r) => r.step), [...Array(steps).keys()].map((n) => n + 1));
@@ -90,9 +94,16 @@ const msgs = flow.results.map((r) => Number(r.text.match(/msgs:(\d+)/)![1]));
 assert.deepEqual(msgs, msgs.map((_, n) => 1 + n * 2), `historia acumulada: ${msgs}`);
 
 // --- a skill with no references/: routed and agentic drop themselves
-const solo = await benchmark({ gw: gwOf("openai"), skill: "outlayer", tags: ["swap"], arms: ["none", "full", "core", "routed", "agentic"] });
-assert.equal(solo.skill, "outlayer");
+const solo = await benchmark({ gw: gwOf("openai"), skills: ["outlayer"], tags: ["swap"], arms: ["none", "full", "core", "routed", "agentic"] });
+assert.deepEqual(solo.skills, ["outlayer"]);
 assert.deepEqual([...new Set(solo.results.map((r) => r.arm))].sort(), ["core", "full", "none"]);
+
+// --- comparar dos skills: la misma batería contra los dos, cada fila sabe de quién es
+const duel = await benchmark({ gw: gwOf("openai"), skills: ["agent-custody", "outlayer"], tags: ["swap"], arms: ["core", "agentic"] });
+assert.deepEqual(duel.skills.sort(), ["agent-custody", "outlayer"]);
+// agentic solo aplica al que tiene references/: 2 casos x (2 arms + 1 arm)
+assert.equal(duel.results.length, 2 * 3, `celdas skill x arm: ${duel.results.length}`);
+assert.deepEqual([...new Set(duel.results.filter((r) => r.arm === "agentic").map((r) => r.skill))], ["agent-custody"]);
 
 // --- api error: it does not break the run
 const broken = await benchmark({ gw: { ...gwOf("openai"), baseUrl: "http://127.0.0.1:1/v1" }, tags: ["swap"], arms: ["none"] });
@@ -122,12 +133,42 @@ assert.equal(badArm.status, 400);
 
 const run = await fetch(`${base}/benchmarks`, {
   method: "POST", headers: { "content-type": "application/json" },
-  body: JSON.stringify({ gateway: "__test__", skill: "outlayer", tags: ["swap"], arms: ["core"] }),
+  body: JSON.stringify({ gateway: "__test__", skills: ["outlayer"], tags: ["swap"], arms: ["core"] }),
 }).then((r) => r.json());
 assert.equal(run.results.length, 2);
-assert.equal(run.skill, "outlayer");
+assert.deepEqual(run.skills, ["outlayer"]);
 assert.ok(run.file.startsWith("bench-results/outlayer-"));
 rmSync(run.file, { force: true });
+
+// --- streaming (lo que usa la UI): un evento por resultado y un done con el archivo
+const sse = await fetch(`${base}/benchmarks`, {
+  method: "POST", headers: { "content-type": "application/json" },
+  body: JSON.stringify({ gateway: "__test__", skills: ["agent-custody", "outlayer"], tags: ["swap"], arms: ["core"], stream: true }),
+}).then((r) => r.text());
+const events = sse.split("\n\n").filter(Boolean);
+assert.equal(events.filter((e) => !e.includes("event: done")).length, 4, "2 casos x 2 skills");
+const done = JSON.parse(events.at(-1)!.split("data: ")[1]);
+assert.ok(done.file.startsWith("bench-results/agent-custody+outlayer-"), done.file);
+const saved = JSON.parse(readFileSync(done.file, "utf8"));
+assert.deepEqual(saved.skills.sort(), ["agent-custody", "outlayer"]);
+assert.equal(saved.suite, "outlayer");
+rmSync(done.file, { force: true });
+
+// --- revisión manual: el veredicto humano pisa la regex y queda en el json
+const kept = saveBenchmark(await benchmark({ gw: gwOf("openai"), tags: ["swap"], arms: ["core"] }));  // en bench-results, que es donde mira la api
+const name = kept.split("/").pop()!;
+const patch = (body: unknown) => fetch(`${base}/benchmarks/${name}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+assert.equal((await patch({ index: 0, verdict: false })).status, 200);
+assert.equal(JSON.parse(readFileSync(kept, "utf8")).results[0].verdict, false, "queda guardado");
+await patch({ index: 0, verdict: null });
+assert.ok(!("verdict" in JSON.parse(readFileSync(kept, "utf8")).results[0]), "null lo saca y vuelve a mandar la regex");
+assert.equal((await patch({ index: 99, verdict: true })).status, 404);
+assert.equal((await fetch(`${base}/benchmarks/nope.json`, { method: "PATCH" })).status, 404);
+rmSync(kept, { force: true });
+
+const suiteRes = await fetch(`${base}/suites/outlayer?tag=swap`).then((r) => r.json());
+assert.equal(suiteRes.cases.length, 2, "the api filters the battery by tag");
+assert.equal((await fetch(`${base}/suites/nope`)).status, 404);
 
 assert.equal((await fetch(`${base}/gateways/${gw.id}`, { method: "DELETE" })).status, 204);
 assert.deepEqual(store.list(), before, "the store is left as it was");
