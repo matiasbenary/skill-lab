@@ -45,22 +45,24 @@ export async function chat(gw: Gateway, system: string, turns: Turn[], tools?: T
       : { model: gw.model, messages: [{ role: "system", content: system }, ...toOpenAI(turns)], ...(tools && { tools: tools.map(openaiTool) }), ...temperature };
 
     const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+    const json = await res.json().catch(() => ({ error: { message: `${res.status} non-json response` } }));
+    if (res.ok && !json.error) return anthropic ? fromAnthropic(json) : fromOpenAI(json);
+
+    // ponytail: el error puede venir como string, como {message} o anidado en el gateway
+    const msg = typeof json.error === "string" ? json.error : json.error?.message ?? JSON.stringify(json.error ?? json);
+
+    // Several workers can hit this at once; the retry is per call.
+    if (/temperature/i.test(msg) && !noTemperature.has(gw.model)) {
+      noTemperature.add(gw.model);
+      continue;
+    }
 
     // rate limit o error del provider: esperamos y reintentamos
     if (res.status === 429 || res.status >= 500) {
       await new Promise((r) => setTimeout(r, 2000 * attempt));
       continue;
     }
-
-    const json = await res.json().catch(() => ({ error: { message: `${res.status} non-json response` } }));
-    if (!json.error) return anthropic ? fromAnthropic(json) : fromOpenAI(json);
-
-    // Several workers can hit this at once; the retry is per call.
-    if (/temperature/i.test(json.error.message) && !noTemperature.has(gw.model)) {
-      noTemperature.add(gw.model);
-      continue;
-    }
-    throw new Error(json.error.message ?? JSON.stringify(json.error));
+    throw new Error(msg);
   }
   throw new Error("the api did not respond after 3 attempts");
 }

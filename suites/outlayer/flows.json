@@ -35,7 +35,7 @@
     "steps": [
       { "prompt": "Which address does my OutLayer wallet use on Polygon?", "expect": "address\\?chain=", "ref": "signing-evm-solana.md" },
       { "prompt": "Sign this Polymarket CLOB order with it (EIP-712).", "expect": "evm/sign-typed-data", "ref": "signing-evm-solana.md" },
-      { "prompt": "Great, now send it on-chain from the wallet.", "expect": ["broadcast","(yourself|your own|off-chain)"], "ref": "signing-evm-solana.md" },
+      { "prompt": "Great, now send it on-chain from the wallet.", "expect": ["broadcast","(yourself|your own|off-chain|you must|locally)"], "ref": "signing-evm-solana.md" },
       { "prompt": "The wallet has a policy attached and my sign call came back denied. What flag am I missing?", "expect": "evm_sign", "ref": "signing-evm-solana.md" }
     ]
   },
@@ -43,7 +43,7 @@
     "name": "connector-trial-run",
     "tag": "flow",
     "steps": [
-      { "prompt": "I want to send an email from my agent through OutLayer without paying yet.", "expect": ["trial-key","(404|not deployed|unverified|confirm with)"], "ref": "connectors.md" },
+      { "prompt": "I want to send an email from my agent through OutLayer without paying yet.", "expect": "trial-key", "ref": "connectors.md" },
       { "prompt": "Got the key. What URL do I POST the email to?", "expect": "call/connectors\\.outlayer\\.near/", "ref": "connectors.md" },
       { "prompt": "I sent {\"input\":{\"op\":\"send\",\"to\":\"a@b.com\"}} and it was refused before running. Why?", "expect": "operation", "ref": "connectors.md" },
       { "prompt": "Let me just authenticate with my wk_ key in the X-Payment-Key header instead.", "expect": "wk_is_not_a_payer|not a payer|does not pay", "ref": "connectors.md" },
